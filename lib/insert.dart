@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'calender.dart';
 
 void main() {
   runApp(const MyApp());
@@ -85,6 +86,7 @@ class _MyHomePageState extends State<MyHomePage> {
         // the App.build method, and use it to set our appbar title.
         title: Text(widget.title),
       ),
+
       body: Center(
         // Center is a layout widget. It takes a single child and positions it
         // in the middle of the parent.
@@ -113,9 +115,14 @@ class _MyHomePageState extends State<MyHomePage> {
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const SecondPage()),
+          );
+        },
+        tooltip: 'Next Page',
+        child: const Icon(Icons.arrow_forward),
       ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }
