@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'calender.dart';
-
 class ForthPage extends StatelessWidget {
   const ForthPage({super.key});
 
@@ -15,16 +13,6 @@ class ForthPage extends StatelessWidget {
           },
           child: const Text('戻る'),
         ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const SecondPage()),
-          );
-        },
-        tooltip: 'Next Page',
-        child: const Icon(Icons.arrow_forward),
       ),
     );
   }
