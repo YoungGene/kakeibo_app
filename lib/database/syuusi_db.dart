@@ -32,7 +32,9 @@ class KakeiboDb {
             created_at INTEGER NOT NULL      -- unix ms
           )
         ''');
-        await db.execute('CREATE INDEX idx_transactions_date ON transactions(date)');
+        await db.execute(
+          'CREATE INDEX idx_transactions_date ON transactions(date)',
+        );
       },
     );
 
@@ -57,5 +59,21 @@ class KakeiboDb {
   Future<int> deleteById(int id) async {
     final db = await database;
     return db.delete('transactions', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<List<Map<String, dynamic>>> fetchByMonth(int year, int month) async {
+    final db = await instance.database;
+
+    final start = DateTime(year, month, 1);
+    final end = DateTime(year, month + 1, 1);
+
+    return await db.query(
+      'transactions',
+      where: 'date >= ? AND date < ?',
+      whereArgs: [
+        start.toIso8601String().substring(0, 10),
+        end.toIso8601String().substring(0, 10),
+      ],
+    );
   }
 }
