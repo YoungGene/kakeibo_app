@@ -20,14 +20,14 @@ class Tx {
   });
 
   Map<String, Object?> toRow() => {
-        'id': id,
-        'date': date,
-        'type': type == TxType.expense ? 0 : 1,
-        'amount': amount,
-        'category': category,
-        'note': note,
-        'created_at': createdAt,
-      };
+    'id': id,
+    'date': date,
+    'type': type == TxType.expense ? 0 : 1,
+    'amount': amount,
+    'category': category,
+    'note': note,
+    'created_at': createdAt,
+  };
 
   static Tx fromRow(Map<String, Object?> row) {
     return Tx(

@@ -1,5 +1,6 @@
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
+import '../models/transaction.dart';
 
 class KakeiboDb {
   static final KakeiboDb instance = KakeiboDb._();
@@ -75,5 +76,18 @@ class KakeiboDb {
         end.toIso8601String().substring(0, 10),
       ],
     );
+  }
+
+  Future<List<Tx>> getTransactionsByRange(DateTime start, DateTime end) async {
+    final db = await database;
+
+    final result = await db.query(
+      'transactions',
+      where: 'date BETWEEN ? AND ?',
+      whereArgs: [start.toIso8601String(), end.toIso8601String()],
+      orderBy: 'date ASC',
+    );
+
+    return result.map((row) => Tx.fromRow(row)).toList();
   }
 }

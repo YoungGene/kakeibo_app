@@ -11,6 +11,7 @@ void main() async {
   await initializeDateFormatting('ja_JP', null);
   runApp(const MyApp());
 }
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -33,7 +34,7 @@ class _MainPageState extends State<MainPage> {
   final List<Widget> _pages = const [
     MyHomePage(title: 'Flutter Demo Home Page'),
     CalendarPage(),
-    ThirdPage(),
+    ReportPage(),
     ForthPage(),
   ];
 
@@ -51,7 +52,10 @@ class _MainPageState extends State<MainPage> {
         },
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: "ホーム"),
-          BottomNavigationBarItem(icon: Icon(Icons.calendar_today), label: "カレンダー"),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.calendar_today),
+            label: "カレンダー",
+          ),
           BottomNavigationBarItem(icon: Icon(Icons.bar_chart), label: "レポート"),
           BottomNavigationBarItem(icon: Icon(Icons.settings), label: "メニュー"),
         ],
