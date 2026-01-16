@@ -18,25 +18,23 @@ class _KakeiboCalendarPageState extends State<CalendarPage> {
   CalendarFormat _format = CalendarFormat.month;
 
   final NumberFormat _yenFormat = NumberFormat('#,###');
-  static const int highlightThreshold = 1000;
 
   String _key(DateTime d) => DateFormat('yyyy-MM-dd').format(d);
 
   List<Tx> _items = [];
   int _monthlyBalance = 0;
 
-  /// 日別収支
   final Map<String, int> _dailyBalanceMap = {};
 
-  // ---------- カレンダー用金額短縮 ----------
-  String formatCompactYen(int value) {
+  // ---------- 金額省略 ----------
+  String compactYen(int value) {
     final v = value.abs();
     if (v >= 100000000) {
       final n = v / 100000000;
-      return n % 1 == 0 ? '${n.toInt()}億' : '${n.toStringAsFixed(1)}億';
+      return '${n.toStringAsFixed(1)}億';
     } else if (v >= 10000) {
       final n = v / 10000;
-      return n % 1 == 0 ? '${n.toInt()}万' : '${n.toStringAsFixed(1)}万';
+      return '${n.toStringAsFixed(1)}万';
     }
     return v.toString();
   }
@@ -48,14 +46,6 @@ class _KakeiboCalendarPageState extends State<CalendarPage> {
       _items = rows.map(Tx.fromRow).toList();
     });
   }
-
-  int get _incomeSum => _items
-      .where((e) => e.type == TxType.income)
-      .fold(0, (s, e) => s + e.amount);
-
-  int get _expenseSum => _items
-      .where((e) => e.type == TxType.expense)
-      .fold(0, (s, e) => s + e.amount);
 
   // ---------- 月別 ----------
   Future<void> _loadMonthlyBalance() async {
@@ -69,9 +59,7 @@ class _KakeiboCalendarPageState extends State<CalendarPage> {
     int expense = 0;
 
     for (final tx in rows.map(Tx.fromRow)) {
-      final date = DateTime.parse(tx.date);
-      final key = _key(date);
-
+      final key = tx.date;
       _dailyBalanceMap[key] =
           (_dailyBalanceMap[key] ?? 0) +
           (tx.type == TxType.income ? tx.amount : -tx.amount);
@@ -91,6 +79,31 @@ class _KakeiboCalendarPageState extends State<CalendarPage> {
     _loadMonthlyBalance();
   }
 
+  /// ---------- insertへ ----------
+  Future<void> _openInsert(DateTime day) async {
+    final saved = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const MyHomePage(title: "追加"),
+        settings: RouteSettings(arguments: day),
+      ),
+    );
+
+    if (saved == true) {
+      _selectedDay = day;
+      _focusedDay = day;
+      _loadForSelectedDay();
+      _loadMonthlyBalance();
+    }
+  }
+
+  /// ---------- 削除 ----------
+  Future<void> _deleteTx(Tx tx) async {
+    await KakeiboDb.instance.deleteByCreatedAt(tx.createdAt);
+    _loadForSelectedDay();
+    _loadMonthlyBalance();
+  }
+
   @override
   Widget build(BuildContext context) {
     final dateLabel = DateFormat('yyyy/MM/dd').format(_selectedDay);
@@ -101,16 +114,21 @@ class _KakeiboCalendarPageState extends State<CalendarPage> {
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 12),
-            child: _MonthBalanceChip(
-              value: _monthlyBalance,
-              formatter: _yenFormat,
+            child: Chip(
+              label: Text(
+                "月計 ${compactYen(_monthlyBalance)}円",
+                style: TextStyle(
+                  color: _monthlyBalance >= 0 ? Colors.green : Colors.red,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ),
         ],
       ),
       body: Column(
         children: [
-          // ---------- カレンダー ----------
+          /// ---------- カレンダー ----------
           Expanded(
             flex: 5,
             child: Padding(
@@ -122,27 +140,25 @@ class _KakeiboCalendarPageState extends State<CalendarPage> {
                 focusedDay: _focusedDay,
                 calendarFormat: _format,
                 selectedDayPredicate: (d) => isSameDay(_selectedDay, d),
-                onFormatChanged: (f) => setState(() => _format = f),
-                onDaySelected: (selected, focused) {
-                  setState(() {
-                    _selectedDay = selected;
-                    _focusedDay = focused;
-                  });
+                onDaySelected: (s, f) {
+                  _selectedDay = s;
+                  _focusedDay = f;
                   _loadForSelectedDay();
-                  _loadMonthlyBalance();
                 },
                 calendarBuilders: CalendarBuilders(
                   defaultBuilder: (context, day, _) {
                     final key = _key(day);
-                    final balance = _dailyBalanceMap[key];
-                    final has = balance != null && balance != 0;
-                    final plus = has && balance! > 0;
-                    final big = has && balance!.abs() >= highlightThreshold;
-                    final selected = isSameDay(day, _selectedDay);
+                    final bal = _dailyBalanceMap[key];
+                    final has = bal != null && bal != 0;
+                    final plus = has && bal! > 0;
 
-                    return AnimatedScale(
-                      scale: selected ? 1.05 : 1.0,
-                      duration: const Duration(milliseconds: 150),
+                    return GestureDetector(
+                      onTap: () {
+                        _selectedDay = day;
+                        _focusedDay = day;
+                        _loadForSelectedDay();
+                      },
+                      onDoubleTap: () => _openInsert(day),
                       child: Container(
                         margin: const EdgeInsets.all(4),
                         decoration: BoxDecoration(
@@ -153,35 +169,16 @@ class _KakeiboCalendarPageState extends State<CalendarPage> {
                                       : Colors.red.withOpacity(0.15))
                                   : null,
                           borderRadius: BorderRadius.circular(10),
-                          border:
-                              selected
-                                  ? Border.all(
-                                    color:
-                                        Theme.of(context).colorScheme.primary,
-                                    width: 2,
-                                  )
-                                  : null,
                         ),
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Text(
-                              '${day.day}',
-                              style: TextStyle(
-                                fontSize: big ? 16 : 14,
-                                fontWeight:
-                                    big || selected
-                                        ? FontWeight.bold
-                                        : FontWeight.normal,
-                              ),
-                            ),
+                            Text('${day.day}'),
                             if (has)
                               Text(
-                                '${plus ? "+" : "-"}${formatCompactYen(balance!)}',
+                                '${plus ? "+" : "-"}${compactYen(bal!)}',
                                 style: TextStyle(
-                                  fontSize: big ? 13 : 11,
-                                  fontWeight:
-                                      big ? FontWeight.bold : FontWeight.normal,
+                                  fontSize: 11,
                                   color: plus ? Colors.green : Colors.red,
                                 ),
                               ),
@@ -197,146 +194,45 @@ class _KakeiboCalendarPageState extends State<CalendarPage> {
 
           const Divider(),
 
-          // ---------- 日別履歴 ----------
+          /// ---------- 日別 ----------
           Expanded(
             flex: 5,
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-                  child: Row(
-                    children: [
-                      Text(
-                        dateLabel,
-                        style: const TextStyle(
-                          fontSize: 30,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const Spacer(),
-                      _SummaryChip(
-                        label: "収支",
-                        value: _incomeSum - _expenseSum,
-                        formatter: _yenFormat,
-                      ),
-                    ],
+            child: ListView.separated(
+              itemCount: _items.length,
+              separatorBuilder: (_, __) => const Divider(),
+              itemBuilder: (_, i) {
+                final tx = _items[i];
+                final plus = tx.type == TxType.income;
+
+                return Dismissible(
+                  key: ValueKey(tx.createdAt),
+                  background: Container(
+                    color: Colors.red,
+                    alignment: Alignment.centerRight,
+                    padding: const EdgeInsets.only(right: 20),
+                    child: const Icon(Icons.delete, color: Colors.white),
                   ),
-                ),
-                Expanded(
-                  child:
-                      _items.isEmpty
-                          ? const Center(child: Text("この日の履歴はありません"))
-                          : ListView.separated(
-                            itemCount: _items.length,
-                            separatorBuilder: (_, __) => const Divider(),
-                            itemBuilder: (_, i) {
-                              final tx = _items[i];
-                              final plus = tx.type == TxType.income;
-                              return ListTile(
-                                leading: Icon(
-                                  plus ? Icons.add : Icons.remove,
-                                  color: plus ? Colors.green : Colors.red,
-                                ),
-                                title: Text(
-                                  tx.note?.trim().isNotEmpty == true
-                                      ? tx.note!
-                                      : tx.category,
-                                ),
-                                subtitle: Text(tx.category),
-                                trailing: Text(
-                                  "${plus ? "+" : "-"}${_yenFormat.format(tx.amount)}円",
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: plus ? Colors.green : Colors.red,
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                ),
-              ],
+                  direction: DismissDirection.endToStart,
+                  onDismissed: (_) => _deleteTx(tx),
+                  child: ListTile(
+                    leading: Icon(
+                      plus ? Icons.add : Icons.remove,
+                      color: plus ? Colors.green : Colors.red,
+                    ),
+                    title: Text(tx.category),
+                    trailing: Text(
+                      "${plus ? "+" : "-"}${compactYen(tx.amount)}円",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: plus ? Colors.green : Colors.red,
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
           ),
         ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        child: const Icon(Icons.add),
-        onPressed: () async {
-          final saved = await Navigator.push<bool>(
-            context,
-            MaterialPageRoute(builder: (_) => MyHomePage(title: "追加")),
-          );
-          if (saved == true) {
-            _loadForSelectedDay();
-            _loadMonthlyBalance();
-          }
-        },
-      ),
-    );
-  }
-}
-
-// ---------- 日別サマリー ----------
-class _SummaryChip extends StatelessWidget {
-  final String label;
-  final int value;
-  final NumberFormat formatter;
-
-  const _SummaryChip({
-    required this.label,
-    required this.value,
-    required this.formatter,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final plus = value >= 0;
-    final big = value.abs() >= 1000;
-    final color = plus ? Colors.green : Colors.red;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        border: Border.all(color: color.withOpacity(0.6)),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Text(
-        "$label: ${plus ? "+" : "-"}${formatter.format(value.abs())}円",
-        style: TextStyle(
-          fontWeight: big ? FontWeight.bold : FontWeight.normal,
-          fontSize: big ? 18 : 14,
-          color: color,
-        ),
-      ),
-    );
-  }
-}
-
-// ---------- 月収支 ----------
-class _MonthBalanceChip extends StatelessWidget {
-  final int value;
-  final NumberFormat formatter;
-
-  const _MonthBalanceChip({required this.value, required this.formatter});
-
-  @override
-  Widget build(BuildContext context) {
-    final plus = value >= 0;
-    final color = plus ? Colors.green : Colors.red;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-      decoration: BoxDecoration(
-        border: Border.all(color: color, width: 2),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        "${plus ? "+" : "-"}${formatter.format(value.abs())}円",
-        style: TextStyle(
-          fontSize: 22,
-          fontWeight: FontWeight.bold,
-          color: color,
-        ),
       ),
     );
   }

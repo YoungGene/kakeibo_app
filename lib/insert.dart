@@ -259,4 +259,13 @@ class _MyHomePageState extends State<MyHomePage> {
       ),
     );
   }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final arg = ModalRoute.of(context)?.settings.arguments;
+    if (arg is DateTime && _dateCtrl.text.isEmpty) {
+      _dateCtrl.text = DateFormat('yyyy-MM-dd').format(arg);
+    }
+  }
 }
