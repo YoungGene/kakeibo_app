@@ -26,7 +26,7 @@ class _MyHomePageState extends State<MyHomePage> {
   final List<String> expenseCategories = const [
     "食費",
     "家賃",
-    "交通",
+    "交通費",
     "娯楽",
     "医療",
     "教育",
@@ -45,7 +45,7 @@ class _MyHomePageState extends State<MyHomePage> {
   final Map<String, IconData> categoryIcons = const {
     "食費": Icons.fastfood,
     "家賃": Icons.home,
-    "交通": Icons.directions_train,
+    "交通費": Icons.directions_train,
     "娯楽": Icons.sports_esports,
     "医療": Icons.local_hospital,
     "教育": Icons.school,

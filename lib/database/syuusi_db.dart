@@ -25,20 +25,25 @@ class KakeiboDb {
       version: _dbVersion,
       onCreate: (db, version) async {
         await db.execute('''
-          CREATE TABLE transactions (
-  date TEXT,
-  type INTEGER,
-  amount INTEGER,
-  category TEXT,
-  note TEXT,
-  detail TEXT,      -- ★ 追加
-  created_at INTEGER PRIMARY KEY
-)
-''');
-
+      CREATE TABLE transactions (
+        date TEXT,
+        type INTEGER,
+        amount INTEGER,
+        category TEXT,
+        note TEXT,
+        detail TEXT,
+        created_at INTEGER PRIMARY KEY
+      )
+    ''');
         await db.execute(
           'CREATE INDEX idx_transactions_date ON transactions(date)',
         );
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        // v1 → v2 のときに detail カラムを追加
+        if (oldVersion < 2) {
+          await db.execute('ALTER TABLE transactions ADD COLUMN detail TEXT');
+        }
       },
     );
 

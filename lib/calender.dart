@@ -15,7 +15,7 @@ class CalendarPage extends StatefulWidget {
 
 class _KakeiboCalendarPageState extends State<CalendarPage> {
   DateTime _focusedDay = DateTime.now();
-  DateTime _selectedDay = DateTime.now();
+  DateTime? _selectedDay;
   CalendarFormat _format = CalendarFormat.month;
 
   /// 通常の金額表示（12,345）
@@ -46,8 +46,8 @@ class _KakeiboCalendarPageState extends State<CalendarPage> {
   // =====================================================
   // 日別データ読み込み
   // =====================================================
-  Future<void> _loadForSelectedDay() async {
-    final rows = await KakeiboDb.instance.fetchByDate(_key(_selectedDay));
+  Future<void> _loadForSelectedDay(DateTime day) async {
+    final rows = await KakeiboDb.instance.fetchByDate(_key(day));
     setState(() {
       _items = rows.map(Tx.fromRow).toList();
     });
@@ -86,11 +86,25 @@ class _KakeiboCalendarPageState extends State<CalendarPage> {
     });
   }
 
+  // =====================================================
+  // 月全体の一覧
+  // =====================================================
+  Future<void> _loadForMonth() async {
+    final rows = await KakeiboDb.instance.fetchByMonth(
+      _focusedDay.year,
+      _focusedDay.month,
+    );
+
+    setState(() {
+      _items = rows.map(Tx.fromRow).toList();
+    });
+  }
+
   @override
   void initState() {
     super.initState();
-    _loadForSelectedDay();
-    _loadMonthlyBalance();
+    _loadForMonth(); // ← まずは月一覧
+    _loadMonthlyBalance(); // ← 月合計＆日別合計
   }
 
   // =====================================================
@@ -108,7 +122,7 @@ class _KakeiboCalendarPageState extends State<CalendarPage> {
     if (saved == true) {
       _selectedDay = day;
       _focusedDay = day;
-      _loadForSelectedDay();
+      _loadForSelectedDay(day); // ← 引数付き版
       _loadMonthlyBalance();
     }
   }
@@ -118,14 +132,73 @@ class _KakeiboCalendarPageState extends State<CalendarPage> {
   // =====================================================
   Future<void> _deleteTx(Tx tx) async {
     await KakeiboDb.instance.deleteByCreatedAt(tx.createdAt);
-    _loadForSelectedDay();
+
+    if (_selectedDay != null) {
+      _loadForSelectedDay(_selectedDay!);
+    } else {
+      _loadForMonth();
+    }
     _loadMonthlyBalance();
+  }
+
+  Widget _buildDayCell(
+    BuildContext context,
+    DateTime day, {
+    required bool isSelected,
+  }) {
+    final key = _key(day);
+    final bal = _dailyBalanceMap[key];
+    final has = bal != null && bal != 0;
+    final plus = has && bal! > 0;
+
+    // 選択時の背景色（薄め）
+    final selectedBg = Theme.of(context).colorScheme.primary.withOpacity(0.15);
+
+    // 通常時の背景色（収支による色）
+    final normalBg =
+        has
+            ? (plus
+                ? Colors.green.withOpacity(0.15)
+                : Colors.red.withOpacity(0.15))
+            : Colors.transparent;
+
+    return SizedBox.expand(
+      // ★ セル全体を必ず同じサイズにする
+      child: Container(
+        // margin は外側のサイズが変わるので消して、
+        // 内側に余白をつける
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: isSelected ? selectedBg : normalBg, // ★ 選択時は全体を薄く塗る
+          borderRadius: BorderRadius.circular(10),
+          border:
+              isSelected
+                  ? Border.all(
+                    color: Theme.of(context).colorScheme.primary,
+                    width: 2,
+                  )
+                  : null,
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text('${day.day}'),
+            if (has)
+              Text(
+                '${plus ? "+" : "-"}${compactYen(bal!)}',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: plus ? Colors.green : Colors.red,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final dateLabel = DateFormat('yyyy/MM/dd').format(_selectedDay);
-
     return Scaffold(
       appBar: AppBar(
         title: const Text("カレンダー"),
@@ -160,52 +233,61 @@ class _KakeiboCalendarPageState extends State<CalendarPage> {
                 lastDay: DateTime.utc(2035, 12, 31),
                 focusedDay: _focusedDay,
                 calendarFormat: _format,
-                selectedDayPredicate: (d) => isSameDay(_selectedDay, d),
+                selectedDayPredicate:
+                    (d) => _selectedDay != null && isSameDay(_selectedDay, d),
                 onDaySelected: (s, f) {
-                  _selectedDay = s;
-                  _focusedDay = f;
-                  _loadForSelectedDay();
+                  setState(() {
+                    if (_selectedDay != null && isSameDay(_selectedDay, s)) {
+                      // ★ 同じ日をもう一度タップ → 選択解除（= 月一覧に戻す）
+                      _selectedDay = null;
+                    } else {
+                      // ★ 別の日をタップ → その日を選択
+                      _selectedDay = s;
+                    }
+                    _focusedDay = f;
+                  });
+
+                  if (_selectedDay == null) {
+                    // 選択解除 → 月一覧モード
+                    _loadForMonth();
+                  } else {
+                    // 日付選択 → 日別モード
+                    _loadForSelectedDay(_selectedDay!);
+                  }
+                },
+                onPageChanged: (focusedDay) {
+                  _focusedDay = focusedDay;
+                  _loadMonthlyBalance();
+                  if (_selectedDay == null) {
+                    // 日付未選択のときだけ、月一覧も更新
+                    _loadForMonth();
+                  }
                 },
                 calendarBuilders: CalendarBuilders(
+                  // 通常の日付セル
                   defaultBuilder: (context, day, _) {
-                    final key = _key(day);
-                    final bal = _dailyBalanceMap[key];
-                    final has = bal != null && bal != 0;
-                    final plus = has && bal! > 0;
-
                     return GestureDetector(
-                      onTap: () {
-                        _selectedDay = day;
-                        _focusedDay = day;
-                        _loadForSelectedDay();
-                      },
+                      // シングルタップでの選択は TableCalendar の onDaySelected に任せる
+                      // onTap: は消してOK
+                      onDoubleTap: () => _openInsert(day), // ★ ダブルタップで追加画面
+                      child: _buildDayCell(
+                        context,
+                        day,
+                        isSelected:
+                            _selectedDay != null &&
+                            isSameDay(_selectedDay, day),
+                      ),
+                    );
+                  },
+
+                  // ★選択された日付セル（青丸の代わりに、自作セル＋枠線）
+                  selectedBuilder: (context, day, focusedDay) {
+                    return GestureDetector(
                       onDoubleTap: () => _openInsert(day),
-                      child: Container(
-                        margin: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color:
-                              has
-                                  ? (plus
-                                      ? Colors.green.withOpacity(0.15)
-                                      : Colors.red.withOpacity(0.15))
-                                  : null,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text('${day.day}'),
-                            if (has)
-                              Text(
-                                /// ★ カレンダーは省略表示
-                                '${plus ? "+" : "-"}${compactYen(bal!)}',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: plus ? Colors.green : Colors.red,
-                                ),
-                              ),
-                          ],
-                        ),
+                      child: _buildDayCell(
+                        context,
+                        day,
+                        isSelected: true, // ここは常に true
                       ),
                     );
                   },
@@ -244,8 +326,13 @@ class _KakeiboCalendarPageState extends State<CalendarPage> {
                       color: plus ? Colors.green : Colors.red,
                     ),
                     title: Text(tx.category),
+                    subtitle:
+                        (tx.detail != null && tx.detail!.isNotEmpty)
+                            ? Text(tx.detail!)
+                            : (tx.note != null && tx.note!.isNotEmpty
+                                ? Text(tx.note!)
+                                : null),
                     trailing: Text(
-                      /// ★ 下は実数表示
                       "${plus ? "+" : "-"}${_yenFormat.format(tx.amount)}円",
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
