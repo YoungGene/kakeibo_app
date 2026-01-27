@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
+
 import 'insert.dart';
 import '../database/syuusi_db.dart';
 import '../models/transaction.dart';
@@ -17,6 +18,7 @@ class _KakeiboCalendarPageState extends State<CalendarPage> {
   DateTime _selectedDay = DateTime.now();
   CalendarFormat _format = CalendarFormat.month;
 
+  /// 通常の金額表示（12,345）
   final NumberFormat _yenFormat = NumberFormat('#,###');
 
   String _key(DateTime d) => DateFormat('yyyy-MM-dd').format(d);
@@ -24,22 +26,26 @@ class _KakeiboCalendarPageState extends State<CalendarPage> {
   List<Tx> _items = [];
   int _monthlyBalance = 0;
 
+  /// 日別合計（内部は int のまま）
   final Map<String, int> _dailyBalanceMap = {};
 
-  // ---------- 金額省略 ----------
+  // =====================================================
+  // 金額省略（カレンダー専用）
+  // 例: 12345 → 1.2万
+  // =====================================================
   String compactYen(int value) {
     final v = value.abs();
     if (v >= 100000000) {
-      final n = v / 100000000;
-      return '${n.toStringAsFixed(1)}億';
+      return '${(v / 100000000).toStringAsFixed(1)}億';
     } else if (v >= 10000) {
-      final n = v / 10000;
-      return '${n.toStringAsFixed(1)}万';
+      return '${(v / 10000).toStringAsFixed(1)}万';
     }
     return v.toString();
   }
 
-  // ---------- 日別 ----------
+  // =====================================================
+  // 日別データ読み込み
+  // =====================================================
   Future<void> _loadForSelectedDay() async {
     final rows = await KakeiboDb.instance.fetchByDate(_key(_selectedDay));
     setState(() {
@@ -47,7 +53,9 @@ class _KakeiboCalendarPageState extends State<CalendarPage> {
     });
   }
 
-  // ---------- 月別 ----------
+  // =====================================================
+  // 月別集計
+  // =====================================================
   Future<void> _loadMonthlyBalance() async {
     final rows = await KakeiboDb.instance.fetchByMonth(
       _focusedDay.year,
@@ -55,16 +63,22 @@ class _KakeiboCalendarPageState extends State<CalendarPage> {
     );
 
     _dailyBalanceMap.clear();
+
     int income = 0;
     int expense = 0;
 
     for (final tx in rows.map(Tx.fromRow)) {
       final key = tx.date;
+
       _dailyBalanceMap[key] =
           (_dailyBalanceMap[key] ?? 0) +
           (tx.type == TxType.income ? tx.amount : -tx.amount);
 
-      tx.type == TxType.income ? income += tx.amount : expense += tx.amount;
+      if (tx.type == TxType.income) {
+        income += tx.amount;
+      } else {
+        expense += tx.amount;
+      }
     }
 
     setState(() {
@@ -79,7 +93,9 @@ class _KakeiboCalendarPageState extends State<CalendarPage> {
     _loadMonthlyBalance();
   }
 
-  /// ---------- insertへ ----------
+  // =====================================================
+  // 追加画面へ
+  // =====================================================
   Future<void> _openInsert(DateTime day) async {
     final saved = await Navigator.push<bool>(
       context,
@@ -97,7 +113,9 @@ class _KakeiboCalendarPageState extends State<CalendarPage> {
     }
   }
 
-  /// ---------- 削除 ----------
+  // =====================================================
+  // 削除
+  // =====================================================
   Future<void> _deleteTx(Tx tx) async {
     await KakeiboDb.instance.deleteByCreatedAt(tx.createdAt);
     _loadForSelectedDay();
@@ -116,7 +134,8 @@ class _KakeiboCalendarPageState extends State<CalendarPage> {
             padding: const EdgeInsets.only(right: 12),
             child: Chip(
               label: Text(
-                "月計 ${compactYen(_monthlyBalance)}円",
+                /// ★ 月計はフル表示
+                "月計 ${_yenFormat.format(_monthlyBalance)}円",
                 style: TextStyle(
                   color: _monthlyBalance >= 0 ? Colors.green : Colors.red,
                   fontWeight: FontWeight.bold,
@@ -128,7 +147,9 @@ class _KakeiboCalendarPageState extends State<CalendarPage> {
       ),
       body: Column(
         children: [
-          /// ---------- カレンダー ----------
+          // =================================================
+          // カレンダー（省略表示）
+          // =================================================
           Expanded(
             flex: 5,
             child: Padding(
@@ -176,6 +197,7 @@ class _KakeiboCalendarPageState extends State<CalendarPage> {
                             Text('${day.day}'),
                             if (has)
                               Text(
+                                /// ★ カレンダーは省略表示
                                 '${plus ? "+" : "-"}${compactYen(bal!)}',
                                 style: TextStyle(
                                   fontSize: 11,
@@ -194,7 +216,9 @@ class _KakeiboCalendarPageState extends State<CalendarPage> {
 
           const Divider(),
 
-          /// ---------- 日別 ----------
+          // =================================================
+          // 日別明細（フル表示）
+          // =================================================
           Expanded(
             flex: 5,
             child: ListView.separated(
@@ -221,7 +245,8 @@ class _KakeiboCalendarPageState extends State<CalendarPage> {
                     ),
                     title: Text(tx.category),
                     trailing: Text(
-                      "${plus ? "+" : "-"}${compactYen(tx.amount)}円",
+                      /// ★ 下は実数表示
+                      "${plus ? "+" : "-"}${_yenFormat.format(tx.amount)}円",
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         color: plus ? Colors.green : Colors.red,

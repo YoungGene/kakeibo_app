@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // ← ★これを追加
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+
 import 'database/syuusi_db.dart';
 import 'models/transaction.dart';
 
@@ -14,11 +15,12 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   final _dateCtrl = TextEditingController();
-  final _memoCtrl = TextEditingController();
+  final _categoryCtrl = TextEditingController();
+  final _detailCtrl = TextEditingController();
   final _amountCtrl = TextEditingController();
 
-  int selectedIndex = 0; // 0:支出, 1:収入
-  int selectedIndexC = 0;
+  int selectedIndex = 0; // 0: 支出, 1: 収入
+  int selectedCategoryIndex = 0;
 
   /// 支出カテゴリ
   final List<String> expenseCategories = const [
@@ -60,11 +62,15 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   void dispose() {
     _dateCtrl.dispose();
-    _memoCtrl.dispose();
+    _categoryCtrl.dispose();
+    _detailCtrl.dispose();
     _amountCtrl.dispose();
     super.dispose();
   }
 
+  // ===============================
+  // 日付選択
+  // ===============================
   Future<void> _pickDate() async {
     final now = DateTime.now();
     final picked = await showDatePicker(
@@ -79,14 +85,10 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
+  // ===============================
+  // 保存処理
+  // ===============================
   Future<void> _save() async {
-    final type = (selectedIndex == 0) ? TxType.expense : TxType.income;
-
-    final dateKey =
-        _dateCtrl.text.isEmpty
-            ? DateFormat('yyyy-MM-dd').format(DateTime.now())
-            : _dateCtrl.text;
-
     final amount = int.tryParse(_amountCtrl.text);
     if (amount == null) {
       ScaffoldMessenger.of(
@@ -95,30 +97,35 @@ class _MyHomePageState extends State<MyHomePage> {
       return;
     }
 
-    final category = currentCategories[selectedIndexC];
-    final note = _memoCtrl.text.trim();
+    final date =
+        _dateCtrl.text.isEmpty
+            ? DateFormat('yyyy-MM-dd').format(DateTime.now())
+            : _dateCtrl.text;
 
     final tx = Tx(
-      date: dateKey,
-      type: type,
+      date: date,
+      type: selectedIndex == 0 ? TxType.expense : TxType.income,
       amount: amount,
-      category: category,
-      note: note.isEmpty ? null : note,
+      category: currentCategories[selectedCategoryIndex],
+      note: _categoryCtrl.text,
+      detail: _detailCtrl.text.isEmpty ? null : _detailCtrl.text,
       createdAt: DateTime.now().millisecondsSinceEpoch,
     );
 
     await KakeiboDb.instance.insertTransaction(tx.toRow());
 
-    _amountCtrl.clear();
-
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('保存しました')));
+
+    // ★ ここが重要
+    Navigator.pop(context, true);
   }
 
   @override
   Widget build(BuildContext context) {
+    final arg = ModalRoute.of(context)?.settings.arguments;
+    if (arg is DateTime && _dateCtrl.text.isEmpty) {
+      _dateCtrl.text = DateFormat('yyyy-MM-dd').format(arg);
+    }
     final selected = [selectedIndex == 0, selectedIndex == 1];
     final baseColor = selectedIndex == 0 ? Colors.red : Colors.green;
 
@@ -136,21 +143,19 @@ class _MyHomePageState extends State<MyHomePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            /// 支出 / 収入 トグル
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                ToggleButtons(
-                  isSelected: selected,
-                  children: const [Text("支出"), Text("収入")],
-                  onPressed: (int index) {
-                    setState(() {
-                      selectedIndex = index;
-                      selectedIndexC = 0;
-                      _memoCtrl.clear();
-                    });
-                  },
-                ),
+            /// 支出 / 収入
+            ToggleButtons(
+              isSelected: selected,
+              onPressed: (i) {
+                setState(() {
+                  selectedIndex = i;
+                  selectedCategoryIndex = 0;
+                  _categoryCtrl.clear();
+                });
+              },
+              children: const [
+                Padding(padding: EdgeInsets.all(8), child: Text('支出')),
+                Padding(padding: EdgeInsets.all(8), child: Text('収入')),
               ],
             ),
 
@@ -170,25 +175,35 @@ class _MyHomePageState extends State<MyHomePage> {
 
             const SizedBox(height: 12),
 
-            /// 選択カテゴリ
+            /// カテゴリ表示
             TextField(
-              controller: _memoCtrl,
+              controller: _categoryCtrl,
               readOnly: true,
               decoration: const InputDecoration(
-                labelText: '選択したカテゴリ',
+                labelText: 'カテゴリ',
                 border: OutlineInputBorder(),
               ),
             ),
 
             const SizedBox(height: 12),
 
-            /// 💰 金額（数字のみ）
+            /// 詳細
+            TextField(
+              controller: _detailCtrl,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                labelText: '詳細（任意）',
+                border: OutlineInputBorder(),
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            /// 金額
             TextField(
               controller: _amountCtrl,
               keyboardType: TextInputType.number,
-              inputFormatters: [
-                FilteringTextInputFormatter.digitsOnly, // ← ここが重要
-              ],
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               decoration: const InputDecoration(
                 labelText: '金額',
                 border: OutlineInputBorder(),
@@ -206,49 +221,44 @@ class _MyHomePageState extends State<MyHomePage> {
               crossAxisSpacing: 12,
               children: List.generate(currentCategories.length, (index) {
                 final label = currentCategories[index];
-                final isSelected = selectedIndexC == index;
+                final isSelected = selectedCategoryIndex == index;
 
-                return AspectRatio(
-                  aspectRatio: 1,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: () {
-                      setState(() {
-                        selectedIndexC = index;
-                        _memoCtrl.text = label;
-                      });
-                    },
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color:
-                            isSelected
-                                ? baseColor.withOpacity(0.85)
-                                : Colors.grey.shade200,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: isSelected ? baseColor : Colors.grey.shade400,
-                          width: 2,
+                return InkWell(
+                  onTap: () {
+                    setState(() {
+                      selectedCategoryIndex = index;
+                      _categoryCtrl.text = label;
+                    });
+                  },
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color:
+                          isSelected
+                              ? baseColor.withOpacity(0.85)
+                              : Colors.grey.shade200,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isSelected ? baseColor : Colors.grey,
+                        width: 2,
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          categoryIcons[label],
+                          size: 36,
+                          color: isSelected ? Colors.white : Colors.black54,
                         ),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            categoryIcons[label],
-                            size: 36,
-                            color: isSelected ? Colors.white : Colors.black54,
+                        const SizedBox(height: 8),
+                        Text(
+                          label,
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: isSelected ? Colors.white : Colors.black87,
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            label,
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: isSelected ? Colors.white : Colors.black87,
-                            ),
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
                 );
@@ -258,14 +268,5 @@ class _MyHomePageState extends State<MyHomePage> {
         ),
       ),
     );
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final arg = ModalRoute.of(context)?.settings.arguments;
-    if (arg is DateTime && _dateCtrl.text.isEmpty) {
-      _dateCtrl.text = DateFormat('yyyy-MM-dd').format(arg);
-    }
   }
 }

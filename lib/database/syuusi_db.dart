@@ -25,16 +25,16 @@ class KakeiboDb {
       version: _dbVersion,
       onCreate: (db, version) async {
         await db.execute('''
-          CREATE TABLE transactions(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date TEXT NOT NULL,              -- yyyy-MM-dd
-            type INTEGER NOT NULL,           -- 0: expense, 1: income
-            amount INTEGER NOT NULL,
-            category TEXT NOT NULL,
-            note TEXT,
-            created_at INTEGER NOT NULL      -- unix ms（削除用一意キー）
-          )
-        ''');
+          CREATE TABLE transactions (
+  date TEXT,
+  type INTEGER,
+  amount INTEGER,
+  category TEXT,
+  note TEXT,
+  detail TEXT,      -- ★ 追加
+  created_at INTEGER PRIMARY KEY
+)
+''');
 
         await db.execute(
           'CREATE INDEX idx_transactions_date ON transactions(date)',
