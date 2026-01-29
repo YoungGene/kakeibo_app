@@ -1,26 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
 
-import 'database/syuusi_db.dart';
-import 'models/transaction.dart';
+enum RegularCycle { weekly, monthly, yearly }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-  final String title;
+class RegularInsertPage extends StatefulWidget {
+  const RegularInsertPage({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<RegularInsertPage> createState() => _RegularInsertPageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  final _dateCtrl = TextEditingController();
+class _RegularInsertPageState extends State<RegularInsertPage> {
   final _categoryCtrl = TextEditingController();
   final _detailCtrl = TextEditingController();
   final _amountCtrl = TextEditingController();
+  final _dayCtrl = TextEditingController();
+  final _startYmCtrl = TextEditingController();
+  final _endYmCtrl = TextEditingController();
 
   int selectedIndex = 0; // 0: 支出, 1: 収入
   int selectedCategoryIndex = 0;
+  RegularCycle cycle = RegularCycle.monthly;
 
   /// 支出カテゴリ
   final List<String> expenseCategories = const [
@@ -61,81 +61,94 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   void dispose() {
-    _dateCtrl.dispose();
     _categoryCtrl.dispose();
     _detailCtrl.dispose();
     _amountCtrl.dispose();
+    _dayCtrl.dispose();
+    _startYmCtrl.dispose();
+    _endYmCtrl.dispose();
     super.dispose();
   }
 
-  // ===============================
-  // 日付選択
-  // ===============================
-  Future<void> _pickDate() async {
+  /// 年月選択
+  Future<void> _pickYearMonth(TextEditingController controller) async {
     final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
       initialDate: now,
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
+      helpText: '年月を選択',
     );
 
     if (picked != null) {
-      _dateCtrl.text = DateFormat('yyyy-MM-dd').format(picked);
+      controller.text =
+          '${picked.year}-${picked.month.toString().padLeft(2, '0')}';
     }
   }
 
-  // ===============================
-  // 保存処理
-  // ===============================
-  Future<void> _save() async {
-    final amount = int.tryParse(_amountCtrl.text);
-    if (amount == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('金額を正しく入力してください')));
-      return;
+  String get dayLabel {
+    switch (cycle) {
+      case RegularCycle.weekly:
+        return '曜日（1=月〜7=日）';
+      case RegularCycle.yearly:
+        return '月（1〜12）';
+      case RegularCycle.monthly:
+      default:
+        return '日（1〜31）';
     }
+  }
 
-    final date =
-        _dateCtrl.text.isEmpty
-            ? DateFormat('yyyy-MM-dd').format(DateTime.now())
-            : _dateCtrl.text;
-
-    final tx = Tx(
-      date: date,
-      type: selectedIndex == 0 ? TxType.expense : TxType.income,
-      amount: amount,
-      category: currentCategories[selectedCategoryIndex],
-      note: _categoryCtrl.text,
-      detail: _detailCtrl.text.isEmpty ? null : _detailCtrl.text,
-      createdAt: DateTime.now().millisecondsSinceEpoch,
-    );
-
-    await KakeiboDb.instance.insertTransaction(tx.toRow());
-
-    if (!mounted) return;
-
-    // ★ ここが重要
-    Navigator.pop(context, true);
+  int get dayMax {
+    switch (cycle) {
+      case RegularCycle.weekly:
+        return 7;
+      case RegularCycle.yearly:
+        return 12;
+      case RegularCycle.monthly:
+      default:
+        return 31;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final arg = ModalRoute.of(context)?.settings.arguments;
-    if (arg is DateTime && _dateCtrl.text.isEmpty) {
-      _dateCtrl.text = DateFormat('yyyy-MM-dd').format(arg);
-    }
     final selected = [selectedIndex == 0, selectedIndex == 1];
     final baseColor = selectedIndex == 0 ? Colors.red : Colors.green;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.title),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-      ),
+      appBar: AppBar(title: const Text('定期支出・収入設定')),
       floatingActionButton: FloatingActionButton(
-        onPressed: _save,
+        onPressed: () {
+          final amount = int.tryParse(_amountCtrl.text);
+          final day = int.tryParse(_dayCtrl.text);
+
+          if (amount == null || amount <= 0) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(const SnackBar(content: Text('金額が不正です')));
+            return;
+          }
+
+          if (day == null || day < 1 || day > dayMax) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text('$dayLabel を正しく入力してください')));
+            return;
+          }
+
+          if (_startYmCtrl.text.isEmpty) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(const SnackBar(content: Text('開始年月を入力してください')));
+            return;
+          }
+
+          // TODO: 定期DB保存
+          // cycle, type, category, detail, amount, day, startYm, endYm
+
+          Navigator.pop(context, true);
+        },
         child: const Text('保存'),
       ),
       body: SingleChildScrollView(
@@ -150,7 +163,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 setState(() {
                   selectedIndex = i;
                   selectedCategoryIndex = 0;
-                  _categoryCtrl.clear();
+                  _categoryCtrl.text = currentCategories[0];
                 });
               },
               children: const [
@@ -161,21 +174,77 @@ class _MyHomePageState extends State<MyHomePage> {
 
             const SizedBox(height: 16),
 
-            /// 日付
-            TextField(
-              controller: _dateCtrl,
-              readOnly: true,
-              onTap: _pickDate,
-              decoration: const InputDecoration(
-                labelText: '日付',
-                border: OutlineInputBorder(),
-                suffixIcon: Icon(Icons.calendar_today),
-              ),
+            /// 周期トグル
+            ToggleButtons(
+              isSelected: [
+                cycle == RegularCycle.weekly,
+                cycle == RegularCycle.monthly,
+                cycle == RegularCycle.yearly,
+              ],
+              onPressed: (i) {
+                setState(() {
+                  cycle = RegularCycle.values[i];
+                  _dayCtrl.clear();
+                });
+              },
+              children: const [
+                Padding(padding: EdgeInsets.all(8), child: Text('週次')),
+                Padding(padding: EdgeInsets.all(8), child: Text('月次')),
+                Padding(padding: EdgeInsets.all(8), child: Text('年次')),
+              ],
+            ),
+
+            const SizedBox(height: 16),
+
+            /// 日付・開始・終了（横並び）
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _dayCtrl,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(2),
+                    ],
+                    decoration: InputDecoration(
+                      labelText: dayLabel,
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: _startYmCtrl,
+                    readOnly: true,
+                    onTap: () => _pickYearMonth(_startYmCtrl),
+                    decoration: const InputDecoration(
+                      labelText: '開始年月',
+                      border: OutlineInputBorder(),
+                      suffixIcon: Icon(Icons.calendar_today),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: _endYmCtrl,
+                    readOnly: true,
+                    onTap: () => _pickYearMonth(_endYmCtrl),
+                    decoration: const InputDecoration(
+                      labelText: '終了年月',
+                      border: OutlineInputBorder(),
+                      suffixIcon: Icon(Icons.calendar_today),
+                    ),
+                  ),
+                ),
+              ],
             ),
 
             const SizedBox(height: 12),
 
-            /// カテゴリ表示
+            /// カテゴリ
             TextField(
               controller: _categoryCtrl,
               readOnly: true,
