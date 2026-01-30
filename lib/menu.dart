@@ -24,16 +24,6 @@ class ForthPage extends StatelessWidget {
               },
               child: const Text('定期支出・収入設定'),
             ),
-
-            const SizedBox(height: 16),
-
-            /// 戻る
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child: const Text('戻る'),
-            ),
           ],
         ),
       ),

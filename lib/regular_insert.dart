@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-
-enum RegularCycle { weekly, monthly, yearly }
+import 'main.dart';
 
 class RegularInsertPage extends StatefulWidget {
   const RegularInsertPage({super.key});
@@ -15,14 +14,18 @@ class _RegularInsertPageState extends State<RegularInsertPage> {
   final _detailCtrl = TextEditingController();
   final _amountCtrl = TextEditingController();
   final _dayCtrl = TextEditingController();
-  final _startYmCtrl = TextEditingController();
-  final _endYmCtrl = TextEditingController();
 
   int selectedIndex = 0; // 0: 支出, 1: 収入
   int selectedCategoryIndex = 0;
-  RegularCycle cycle = RegularCycle.monthly;
 
-  /// 支出カテゴリ
+  int? startYear;
+  int? startMonth;
+  int? endYear;
+  int? endMonth;
+
+  final List<int> yearList = List.generate(11, (i) => 2020 + i);
+  final List<int> monthList = List.generate(12, (i) => i + 1);
+
   final List<String> expenseCategories = const [
     "食費",
     "家賃",
@@ -33,7 +36,6 @@ class _RegularInsertPageState extends State<RegularInsertPage> {
     "その他",
   ];
 
-  /// 収入カテゴリ
   final List<String> incomeCategories = const [
     "給料",
     "副収入",
@@ -65,50 +67,7 @@ class _RegularInsertPageState extends State<RegularInsertPage> {
     _detailCtrl.dispose();
     _amountCtrl.dispose();
     _dayCtrl.dispose();
-    _startYmCtrl.dispose();
-    _endYmCtrl.dispose();
     super.dispose();
-  }
-
-  /// 年月選択
-  Future<void> _pickYearMonth(TextEditingController controller) async {
-    final now = DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: now,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2100),
-      helpText: '年月を選択',
-    );
-
-    if (picked != null) {
-      controller.text =
-          '${picked.year}-${picked.month.toString().padLeft(2, '0')}';
-    }
-  }
-
-  String get dayLabel {
-    switch (cycle) {
-      case RegularCycle.weekly:
-        return '曜日（1=月〜7=日）';
-      case RegularCycle.yearly:
-        return '月（1〜12）';
-      case RegularCycle.monthly:
-      default:
-        return '日（1〜31）';
-    }
-  }
-
-  int get dayMax {
-    switch (cycle) {
-      case RegularCycle.weekly:
-        return 7;
-      case RegularCycle.yearly:
-        return 12;
-      case RegularCycle.monthly:
-      default:
-        return 31;
-    }
   }
 
   @override
@@ -118,7 +77,9 @@ class _RegularInsertPageState extends State<RegularInsertPage> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('定期支出・収入設定')),
+
       floatingActionButton: FloatingActionButton(
+        child: const Text('保存'),
         onPressed: () {
           final amount = int.tryParse(_amountCtrl.text);
           final day = int.tryParse(_dayCtrl.text);
@@ -130,33 +91,29 @@ class _RegularInsertPageState extends State<RegularInsertPage> {
             return;
           }
 
-          if (day == null || day < 1 || day > dayMax) {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text('$dayLabel を正しく入力してください')));
+          if (day == null || day < 1 || day > 31) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('日（1〜31）を正しく入力してください')),
+            );
             return;
           }
 
-          if (_startYmCtrl.text.isEmpty) {
+          if (startYear == null || startMonth == null) {
             ScaffoldMessenger.of(
               context,
-            ).showSnackBar(const SnackBar(content: Text('開始年月を入力してください')));
+            ).showSnackBar(const SnackBar(content: Text('開始年月を選択してください')));
             return;
           }
-
-          // TODO: 定期DB保存
-          // cycle, type, category, detail, amount, day, startYm, endYm
 
           Navigator.pop(context, true);
         },
-        child: const Text('保存'),
       ),
+
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            /// 支出 / 収入
             ToggleButtons(
               isSelected: selected,
               onPressed: (i) {
@@ -174,77 +131,134 @@ class _RegularInsertPageState extends State<RegularInsertPage> {
 
             const SizedBox(height: 16),
 
-            /// 周期トグル
-            ToggleButtons(
-              isSelected: [
-                cycle == RegularCycle.weekly,
-                cycle == RegularCycle.monthly,
-                cycle == RegularCycle.yearly,
-              ],
-              onPressed: (i) {
-                setState(() {
-                  cycle = RegularCycle.values[i];
-                  _dayCtrl.clear();
-                });
+            /// 日・開始年・開始月・終了年・終了月（割合指定）
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final yearWidth = constraints.maxWidth * 0.22;
+                final monthWidth = constraints.maxWidth * 0.20;
+
+                return Row(
+                  children: [
+                    /// 日（固定）
+                    SizedBox(
+                      width: 48,
+                      child: TextField(
+                        controller: _dayCtrl,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(2),
+                        ],
+                        decoration: const InputDecoration(
+                          labelText: '日',
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+
+                    /// 開始年
+                    SizedBox(
+                      width: yearWidth,
+                      child: DropdownButtonFormField<int>(
+                        value: startYear,
+                        isDense: true,
+                        decoration: const InputDecoration(
+                          labelText: '開始年',
+                          border: OutlineInputBorder(),
+                        ),
+                        items:
+                            yearList
+                                .map(
+                                  (y) => DropdownMenuItem(
+                                    value: y,
+                                    child: Text('$y'),
+                                  ),
+                                )
+                                .toList(),
+                        onChanged: (v) => setState(() => startYear = v),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+
+                    /// 開始月
+                    SizedBox(
+                      width: monthWidth,
+                      child: DropdownButtonFormField<int>(
+                        value: startMonth,
+                        isDense: true,
+                        decoration: const InputDecoration(
+                          labelText: '月',
+                          border: OutlineInputBorder(),
+                        ),
+                        items:
+                            monthList
+                                .map(
+                                  (m) => DropdownMenuItem(
+                                    value: m,
+                                    child: Text('$m'),
+                                  ),
+                                )
+                                .toList(),
+                        onChanged: (v) => setState(() => startMonth = v),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+
+                    /// 終了年
+                    SizedBox(
+                      width: yearWidth,
+                      child: DropdownButtonFormField<int>(
+                        value: endYear,
+                        isDense: true,
+                        decoration: const InputDecoration(
+                          labelText: '終了年',
+                          border: OutlineInputBorder(),
+                        ),
+                        items:
+                            yearList
+                                .map(
+                                  (y) => DropdownMenuItem(
+                                    value: y,
+                                    child: Text('$y'),
+                                  ),
+                                )
+                                .toList(),
+                        onChanged: (v) => setState(() => endYear = v),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+
+                    /// 終了月
+                    SizedBox(
+                      width: monthWidth,
+                      child: DropdownButtonFormField<int>(
+                        value: endMonth,
+                        isDense: true,
+                        decoration: const InputDecoration(
+                          labelText: '月',
+                          border: OutlineInputBorder(),
+                        ),
+                        items:
+                            monthList
+                                .map(
+                                  (m) => DropdownMenuItem(
+                                    value: m,
+                                    child: Text('$m'),
+                                  ),
+                                )
+                                .toList(),
+                        onChanged: (v) => setState(() => endMonth = v),
+                      ),
+                    ),
+                  ],
+                );
               },
-              children: const [
-                Padding(padding: EdgeInsets.all(8), child: Text('週次')),
-                Padding(padding: EdgeInsets.all(8), child: Text('月次')),
-                Padding(padding: EdgeInsets.all(8), child: Text('年次')),
-              ],
-            ),
-
-            const SizedBox(height: 16),
-
-            /// 日付・開始・終了（横並び）
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _dayCtrl,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(2),
-                    ],
-                    decoration: InputDecoration(
-                      labelText: dayLabel,
-                      border: const OutlineInputBorder(),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    controller: _startYmCtrl,
-                    readOnly: true,
-                    onTap: () => _pickYearMonth(_startYmCtrl),
-                    decoration: const InputDecoration(
-                      labelText: '開始年月',
-                      border: OutlineInputBorder(),
-                      suffixIcon: Icon(Icons.calendar_today),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    controller: _endYmCtrl,
-                    readOnly: true,
-                    onTap: () => _pickYearMonth(_endYmCtrl),
-                    decoration: const InputDecoration(
-                      labelText: '終了年月',
-                      border: OutlineInputBorder(),
-                      suffixIcon: Icon(Icons.calendar_today),
-                    ),
-                  ),
-                ),
-              ],
             ),
 
             const SizedBox(height: 12),
 
-            /// カテゴリ
             TextField(
               controller: _categoryCtrl,
               readOnly: true,
@@ -256,7 +270,6 @@ class _RegularInsertPageState extends State<RegularInsertPage> {
 
             const SizedBox(height: 12),
 
-            /// 詳細
             TextField(
               controller: _detailCtrl,
               maxLines: 2,
@@ -268,7 +281,6 @@ class _RegularInsertPageState extends State<RegularInsertPage> {
 
             const SizedBox(height: 12),
 
-            /// 金額
             TextField(
               controller: _amountCtrl,
               keyboardType: TextInputType.number,
@@ -281,7 +293,6 @@ class _RegularInsertPageState extends State<RegularInsertPage> {
 
             const SizedBox(height: 24),
 
-            /// カテゴリグリッド
             GridView.count(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -335,6 +346,27 @@ class _RegularInsertPageState extends State<RegularInsertPage> {
             ),
           ],
         ),
+      ),
+
+      bottomNavigationBar: BottomNavigationBar(
+        type: BottomNavigationBarType.fixed,
+        currentIndex: 3,
+        onTap: (index) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (_) => MainPage(initialIndex: index)),
+            (_) => false,
+          );
+        },
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.home), label: "ホーム"),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.calendar_today),
+            label: "カレンダー",
+          ),
+          BottomNavigationBarItem(icon: Icon(Icons.bar_chart), label: "レポート"),
+          BottomNavigationBarItem(icon: Icon(Icons.settings), label: "メニュー"),
+        ],
       ),
     );
   }
