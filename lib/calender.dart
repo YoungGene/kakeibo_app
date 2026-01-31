@@ -221,10 +221,10 @@ class _KakeiboCalendarPageState extends State<CalendarPage> {
       body: Column(
         children: [
           // =================================================
-          // カレンダー（省略表示）
+          // カレンダー（縦幅を広く確保）
           // =================================================
-          Expanded(
-            flex: 5,
+          SizedBox(
+            height: 440, // ★ カレンダーの縦幅を拡大
             child: Padding(
               padding: const EdgeInsets.all(12),
               child: TableCalendar(
@@ -232,44 +232,44 @@ class _KakeiboCalendarPageState extends State<CalendarPage> {
                 firstDay: DateTime.utc(2020, 1, 1),
                 lastDay: DateTime.utc(2035, 12, 31),
                 focusedDay: _focusedDay,
+
+                availableCalendarFormats: const {CalendarFormat.month: '月'},
                 calendarFormat: _format,
+
+                rowHeight: 56, // ★ 6週でもオーバーフローしない
+
                 selectedDayPredicate:
                     (d) => _selectedDay != null && isSameDay(_selectedDay, d),
+
                 onDaySelected: (s, f) {
                   setState(() {
                     if (_selectedDay != null && isSameDay(_selectedDay, s)) {
-                      // ★ 同じ日をもう一度タップ → 選択解除（= 月一覧に戻す）
                       _selectedDay = null;
                     } else {
-                      // ★ 別の日をタップ → その日を選択
                       _selectedDay = s;
                     }
                     _focusedDay = f;
                   });
 
                   if (_selectedDay == null) {
-                    // 選択解除 → 月一覧モード
                     _loadForMonth();
                   } else {
-                    // 日付選択 → 日別モード
                     _loadForSelectedDay(_selectedDay!);
                   }
                 },
+
                 onPageChanged: (focusedDay) {
                   _focusedDay = focusedDay;
                   _loadMonthlyBalance();
                   if (_selectedDay == null) {
-                    // 日付未選択のときだけ、月一覧も更新
                     _loadForMonth();
                   }
                 },
+
                 calendarBuilders: CalendarBuilders(
-                  // 通常の日付セル
                   defaultBuilder: (context, day, _) {
                     return GestureDetector(
-                      // シングルタップでの選択は TableCalendar の onDaySelected に任せる
-                      // onTap: は消してOK
-                      onDoubleTap: () => _openInsert(day), // ★ ダブルタップで追加画面
+                      onDoubleTap: () => _openInsert(day),
                       child: _buildDayCell(
                         context,
                         day,
@@ -279,16 +279,10 @@ class _KakeiboCalendarPageState extends State<CalendarPage> {
                       ),
                     );
                   },
-
-                  // ★選択された日付セル（青丸の代わりに、自作セル＋枠線）
                   selectedBuilder: (context, day, focusedDay) {
                     return GestureDetector(
                       onDoubleTap: () => _openInsert(day),
-                      child: _buildDayCell(
-                        context,
-                        day,
-                        isSelected: true, // ここは常に true
-                      ),
+                      child: _buildDayCell(context, day, isSelected: true),
                     );
                   },
                 ),
@@ -296,13 +290,12 @@ class _KakeiboCalendarPageState extends State<CalendarPage> {
             ),
           ),
 
-          const Divider(),
+          const Divider(height: 1),
 
           // =================================================
-          // 日別明細（フル表示）
+          // 日別明細（下に追いやる）
           // =================================================
           Expanded(
-            flex: 5,
             child: ListView.separated(
               itemCount: _items.length,
               separatorBuilder: (_, __) => const Divider(),

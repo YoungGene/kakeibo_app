@@ -23,7 +23,6 @@ class Tx {
 
   /// DB保存用
   Map<String, Object?> toRow() => {
-    'id': id,
     'date': date,
     'type': type == TxType.expense ? 0 : 1,
     'amount': amount,
@@ -36,7 +35,6 @@ class Tx {
   /// DB取得用
   static Tx fromRow(Map<String, Object?> row) {
     return Tx(
-      id: row['id'] as int?,
       date: row['date'] as String,
       type: (row['type'] as int) == 0 ? TxType.expense : TxType.income,
       amount: row['amount'] as int,

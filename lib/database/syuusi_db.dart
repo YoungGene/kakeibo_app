@@ -26,13 +26,14 @@ class KakeiboDb {
       onCreate: (db, version) async {
         await db.execute('''
       CREATE TABLE transactions (
-        date TEXT,
-        type INTEGER,
-        amount INTEGER,
-        category TEXT,
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT NOT NULL,
+        type INTEGER NOT NULL,
+        amount INTEGER NOT NULL,
+        category TEXT NOT NULL,
         note TEXT,
         detail TEXT,
-        created_at INTEGER PRIMARY KEY
+        created_at INTEGER NOT NULL
       )
     ''');
         await db.execute(
